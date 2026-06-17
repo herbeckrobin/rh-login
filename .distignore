@@ -1,0 +1,14 @@
+# Build-Ausschluss.
+.git
+.github
+.gitignore
+.distignore
+.idea
+.vscode
+node_modules
+tests
+bin
+dist
+README.md
+*.log
+.DS_Store
