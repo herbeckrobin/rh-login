@@ -20,8 +20,10 @@ final class LoginGroup implements GroupInterface
     public const FIELD_ENABLED = 'limit_enabled';
     public const FIELD_MAX_ATTEMPTS = 'max_attempts';
     public const FIELD_LOCKOUT_MINUTES = 'lockout_minutes';
+    public const FIELD_TRUST_PROXY = 'trust_proxy';
     public const FIELD_HIDE_ENABLED = 'hide_enabled';
     public const FIELD_LOGIN_SLUG = 'login_slug';
+    public const FIELD_DISABLE_APP_PASSWORDS = 'disable_app_passwords';
 
     public function id(): string
     {
@@ -71,6 +73,14 @@ final class LoginGroup implements GroupInterface
                 keywords: ['sperre', 'lockout', 'dauer', 'minuten'],
             ),
             new SettingField(
+                id: self::FIELD_TRUST_PROXY,
+                type: SettingField::TYPE_BOOLEAN,
+                label: __('Hinter Reverse-Proxy / Cloudflare', 'rh-login'),
+                description: __('Liest die echte Besucher-IP aus dem Proxy-Header (Cloudflare oder X-Forwarded-For), damit das Limit die richtige IP sperrt statt der Proxy-IP. Ohne diese Option teilen sich hinter einem Proxy alle Besucher einen Zähler, ein Bot kann dann alle aussperren. Nur aktivieren, wenn die Seite hinter einem Proxy läuft und der Server nicht direkt daran vorbei erreichbar ist.', 'rh-login'),
+                default: false,
+                keywords: ['proxy', 'cloudflare', 'ip', 'reverse', 'forwarded'],
+            ),
+            new SettingField(
                 id: self::FIELD_HIDE_ENABLED,
                 type: SettingField::TYPE_BOOLEAN,
                 label: __('Login-URL verstecken', 'rh-login'),
@@ -85,6 +95,14 @@ final class LoginGroup implements GroupInterface
                 description: __('Der geheime Pfad, z.B. mein-zugang, team-eingang, backstage, kontrolle. Am sichersten etwas Eigenes mit Zufallsteil wie zugang-7f3a9. Nur Buchstaben, Zahlen, Bindestrich. Login dann unter deine-domain.de/<pfad>.', 'rh-login'),
                 default: '',
                 keywords: ['slug', 'pfad', 'login', 'url'],
+            ),
+            new SettingField(
+                id: self::FIELD_DISABLE_APP_PASSWORDS,
+                type: SettingField::TYPE_BOOLEAN,
+                label: __('Anwendungspasswörter deaktivieren', 'rh-login'),
+                description: __('Schaltet die WordPress-Anwendungspasswörter ab (seit WP 5.6 standardmäßig an). Empfohlen, wenn keine App und keine Schnittstelle sie braucht, denn sie sind ein zusätzlicher Login-Weg über die REST-API.', 'rh-login'),
+                default: false,
+                keywords: ['anwendungspasswort', 'application password', 'api', 'rest'],
             ),
         ];
     }
