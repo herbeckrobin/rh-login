@@ -16,6 +16,9 @@ use RhLogin\Admin\LoginGroup;
  * - Alle wp-login.php-URLs (Formular-Action, Logout, Passwort-Reset, Redirects)
  *   werden auf den geheimen Pfad umgeschrieben, damit die normalen Login-Flows
  *   weiterlaufen.
+ * - Die bekannten Bequem-Aliase (/login, /admin, /dashboard ...), die ein Angreifer
+ *   als Erstes rät, liefern ein echtes 404. Eine echte Seite an dem Pfad (z.B. ein
+ *   Kundenportal unter /login) bleibt unangetastet.
  *
  * Escape-Hatch: bei Aussperrung das Plugin deaktivieren, dann ist /wp-login.php
  * wieder erreichbar (alles läuft nur über Laufzeit-Hooks, nichts wird umgeschrieben).
@@ -25,6 +28,13 @@ use RhLogin\Admin\LoginGroup;
  */
 final class HideLogin
 {
+    /**
+     * Bekannte Standard-Login-Pfade, die wie wp-login.php abgefangen werden.
+     *
+     * @var string[]
+     */
+    private const KNOWN_ALIASES = ['login', 'wp-login', 'admin', 'dashboard', 'signin', 'sign-in', 'backend'];
+
     public function boot(): void
     {
         add_action('plugins_loaded', [$this, 'run'], 1);
@@ -52,7 +62,39 @@ final class HideLogin
         // verfügbar) und vor dem auth_redirect von wp-admin/admin.php.
         add_action('init', [$this, 'protectAdmin']);
 
+        // Bekannte Bequem-Aliase (/login, /admin ...) früh auf 404 setzen, bevor ein
+        // Canonical-Redirect oder ein anderes Plugin sie irgendwohin leiten kann.
+        add_action('parse_request', [$this, 'blockKnownAliases'], 1);
+
         $this->intercept();
+    }
+
+    /**
+     * Die geratenen Standard-Login-Pfade liefern ein echtes 404, außer dort liegt
+     * eine echte Seite (Kundenportal) oder es ist der gewählte geheime Pfad.
+     */
+    public function blockKnownAliases(): void
+    {
+        $rel = strtolower($this->currentRelPath());
+        if ($rel === '' || $rel === $this->slug()) {
+            return;
+        }
+
+        /** @var string[] $aliases */
+        $aliases = (array) apply_filters('rh-login/blocked_aliases', self::KNOWN_ALIASES);
+        if (! in_array($rel, $aliases, true)) {
+            return;
+        }
+
+        // Eine echte Seite an dem Pfad (z.B. /login oder /dashboard als Kundenportal)
+        // nicht abwürgen.
+        if (get_page_by_path($rel) instanceof \WP_Post) {
+            return;
+        }
+
+        status_header(404);
+        nocache_headers();
+        wp_die(esc_html__('Nicht gefunden.', 'rh-login'), '', ['response' => 404]);
     }
 
     /**

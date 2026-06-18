@@ -74,7 +74,7 @@ final class LoginGroup implements GroupInterface
                 id: self::FIELD_HIDE_ENABLED,
                 type: SettingField::TYPE_BOOLEAN,
                 label: __('Login-URL verstecken', 'rh-login'),
-                description: __('Versteckt wp-login.php hinter einem eigenen Pfad. WICHTIG: nach dem Speichern Login UND Logout testen. Falls ausgesperrt, das Plugin deaktivieren (dann ist /wp-login.php wieder normal erreichbar).', 'rh-login'),
+                description: __('Versteckt wp-login.php hinter einem eigenen Pfad. Die geratenen Standard-Pfade (/login, /admin, /dashboard ...) liefern dann ein 404. WICHTIG: nach dem Speichern Login UND Logout testen. Falls ausgesperrt, das Plugin deaktivieren (dann ist /wp-login.php wieder normal erreichbar).', 'rh-login'),
                 default: false,
                 keywords: ['login', 'url', 'verstecken', 'hide', 'wp-login'],
             ),
