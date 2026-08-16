@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RhLogin;
 
 use RhBlueprint\Core\Core;
+use RhBlueprint\Core\UpdateChecker;
 use RhBlueprint\Core\Settings\SettingsPage;
 use RhLogin\Admin\LoginGroup;
 
@@ -15,9 +16,9 @@ final class Plugin
 {
     public static function boot(): void
     {
-        if (class_exists(UpdateChecker::class)) {
-            (new UpdateChecker())->boot();
-        }
+        add_action('plugins_loaded', static function (): void {
+            (new UpdateChecker('rh-login', RHLOGIN_PLUGIN_FILE))->boot();
+        }, 0);
 
         // Früh registrieren: das Verstecken muss den Request auf plugins_loaded abfangen.
         (new HideLogin())->boot();
