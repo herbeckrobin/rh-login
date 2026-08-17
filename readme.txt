@@ -4,7 +4,7 @@ Tags: login, security, brute force, lockout, limit login attempts
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.1
-Stable tag: 0.2.1
+Stable tag: 0.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -19,6 +19,12 @@ It can also hide the login URL behind a secret path (wp-login.php is then redire
 Part of the rh-blueprint collection. Settings live under RH Blueprint > Login.
 
 == Changelog ==
+
+= 0.3.1 =
+* Internal: shared building blocks from core 2.6.0. The update check no longer loads on regular front-end requests.
+
+= 0.3.1 =
+* Internal: shared building blocks from core 2.6.0. The update check no longer loads on regular front-end requests.
 
 = 0.2.0 =
 * Added: hide the login URL behind a custom secret path (opt-in).
