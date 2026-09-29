@@ -11,8 +11,10 @@ use RhLogin\Admin\LoginGroup;
  *
  * Mechanik:
  * - Auf `plugins_loaded` (früh) den Request abfangen: der geheime Pfad lädt
- *   wp-login.php, ein direkter Zugriff auf /wp-login.php wird auf die Startseite
- *   umgeleitet (außer action=postpass für passwortgeschützte Beiträge).
+ *   wp-login.php, ein direkter Zugriff auf wp-login.php wird auf die Startseite
+ *   umgeleitet (außer action=postpass für passwortgeschützte Beiträge). Ob
+ *   wp-login.php läuft, entscheidet das ausgeführte Skript, nicht die URL. So
+ *   kommt keine Schreibweise (//wp-login.php, %77p-login.php, /./) mehr vorbei.
  * - Alle wp-login.php-URLs (Formular-Action, Logout, Passwort-Reset, Redirects)
  *   werden auf den geheimen Pfad umgeschrieben, damit die normalen Login-Flows
  *   weiterlaufen.
@@ -33,7 +35,7 @@ final class HideLogin
      *
      * @var string[]
      */
-    private const KNOWN_ALIASES = ['login', 'wp-login', 'admin', 'dashboard', 'signin', 'sign-in', 'backend'];
+    private const KNOWN_ALIASES = ['login', 'login.php', 'wp-login', 'admin', 'dashboard', 'signin', 'sign-in', 'backend'];
 
     public function boot(): void
     {
@@ -56,6 +58,15 @@ final class HideLogin
         add_filter('network_site_url', [$this, 'filterUrl'], 10, 1);
         add_filter('wp_redirect', [$this, 'filterUrl'], 10, 1);
 
+        // Core leitet /login, /login.php, /admin und /dashboard selbst weiter, /login.php
+        // direkt auf wp_login_url() und damit auf den geheimen Pfad. So hat ein Scanner
+        // den Pfad am 29.09.2026 gefunden.
+        remove_action('template_redirect', 'wp_redirect_admin_locations', 1000);
+
+        // Leitet irgendein Core-Skript einen Gast zum Login (auth_redirect im Customizer,
+        // wp-signup.php), den Pfad nicht verraten.
+        add_filter('wp_redirect', [$this, 'guardRedirect'], 9, 1);
+
         // /wp-admin für Gäste verstecken: auf die Startseite, NICHT zum Login leiten.
         // Sonst würde der geheime Login-Pfad im Redirect (Location) geleakt und über
         // die bekannte /wp-admin-Adresse auffindbar. Läuft auf `init` (is_user_logged_in
@@ -75,20 +86,21 @@ final class HideLogin
      */
     public function blockKnownAliases(): void
     {
-        $rel = strtolower($this->currentRelPath());
-        if ($rel === '' || $rel === $this->slug()) {
+        $variants = $this->currentRelPaths();
+        if (in_array('', $variants, true) || in_array($this->slug(), $variants, true)) {
             return;
         }
 
         /** @var string[] $aliases */
-        $aliases = (array) apply_filters('rh-login/blocked_aliases', self::KNOWN_ALIASES);
-        if (! in_array($rel, $aliases, true)) {
+        $aliases = array_map('strtolower', (array) apply_filters('rh-login/blocked_aliases', self::KNOWN_ALIASES));
+        $hit = array_values(array_intersect($variants, $aliases));
+        if ($hit === []) {
             return;
         }
 
         // Eine echte Seite an dem Pfad (z.B. /login oder /dashboard als Kundenportal)
         // nicht abwürgen.
-        if (get_page_by_path($rel) instanceof \WP_Post) {
+        if (get_page_by_path($hit[0]) instanceof \WP_Post) {
             return;
         }
 
@@ -112,28 +124,76 @@ final class HideLogin
         return $query !== '' ? $target . '?' . $query : $target;
     }
 
-    private function intercept(): void
+    /**
+     * Ein Gast, der von einem Core-Skript zum Login geschickt wird, landet auf der
+     * Startseite. Ausgenommen ist das Frontend (index.php): dort leiten Plugins wie
+     * Mitgliederbereiche bewusst zum Login, das bleibt wie bisher.
+     */
+    public function guardRedirect(string $location): string
     {
-        $rel = $this->currentRelPath();
-        $slug = $this->slug();
-
-        // Geheimer Pfad -> wp-login.php laden. Das Laden auf `init` verschieben,
-        // weil wp-login.php WP-Konstanten (AUTOSAVE_INTERVAL etc.) braucht, die auf
-        // plugins_loaded noch nicht definiert sind.
-        if ($rel === $slug) {
-            add_action('init', [$this, 'serveLogin'], 1);
-            return;
+        if (! $this->pointsToLogin($location) || is_user_logged_in()) {
+            return $location;
+        }
+        if ($this->isLoginScript() || in_array($this->slug(), $this->currentRelPaths(), true)) {
+            return $location;
         }
 
-        // Direkter Zugriff auf wp-login.php -> verstecken (außer postpass).
-        if ($rel === 'wp-login.php') {
-            $action = isset($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '';
-            if ($action === 'postpass') {
+        $script = strtolower(basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')));
+
+        return $script === 'index.php' ? $location : home_url('/');
+    }
+
+    /**
+     * Zeigt die Weiterleitung auf den Login? wp_login_url() ist zu diesem Zeitpunkt
+     * meist schon über site_url auf den geheimen Pfad umgeschrieben, darum beide
+     * Formen erkennen.
+     */
+    private function pointsToLogin(string $location): bool
+    {
+        $path = (string) preg_replace('#^[a-z][a-z0-9+.-]*://[^/]*#i', '', $location);
+        $homePath = (string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '');
+        $targets = LoginPath::variants($path, $homePath);
+
+        return in_array('wp-login.php', $targets, true) || in_array($this->slug(), $targets, true);
+    }
+
+    private function intercept(): void
+    {
+        // Direkter Zugriff auf wp-login.php -> verstecken (außer postpass). Zuerst
+        // prüfen: läuft wp-login.php, ist es nie der geheime Pfad.
+        if ($this->isLoginScript()) {
+            if (LoginPath::isPostpass($_REQUEST, $_GET)) {
                 return; // Passwortgeschützte Beiträge brauchen wp-login.php?action=postpass.
             }
             wp_safe_redirect(home_url('/'));
             exit;
         }
+
+        // Geheimer Pfad -> wp-login.php laden. Das Laden auf `init` verschieben,
+        // weil wp-login.php WP-Konstanten (AUTOSAVE_INTERVAL etc.) braucht, die auf
+        // plugins_loaded noch nicht definiert sind.
+        if (in_array($this->slug(), $this->currentRelPaths(), true)) {
+            add_action('init', [$this, 'serveLogin'], 1);
+        }
+    }
+
+    /**
+     * Läuft gerade wp-login.php? Maßgeblich ist die Datei, die der Server ausführt,
+     * denn die hat er schon nach Dekodieren und Slash-Glätten gewählt.
+     */
+    private function isLoginScript(): bool
+    {
+        $login = realpath(ABSPATH . 'wp-login.php');
+        $file = (string) ($_SERVER['SCRIPT_FILENAME'] ?? '');
+        $script = $file !== '' ? realpath($file) : false;
+
+        if ($login !== false && $script !== false) {
+            // Klein vergleichen: auf einem Dateisystem ohne Groß/Klein-Unterscheidung
+            // führt /WP-LOGIN.PHP dieselbe Datei aus.
+            return strtolower($script) === strtolower($login);
+        }
+
+        return strtolower(basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''))) === 'wp-login.php';
     }
 
     public function protectAdmin(): void
@@ -167,16 +227,14 @@ final class HideLogin
         exit;
     }
 
-    private function currentRelPath(): string
+    /**
+     * @return array<int, string>
+     */
+    private function currentRelPaths(): array
     {
-        $path = trim((string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) ?? ''), '/');
-        $homePath = trim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? ''), '/');
+        $homePath = (string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '');
 
-        if ($homePath !== '' && strpos($path, $homePath) === 0) {
-            $path = trim(substr($path, strlen($homePath)), '/');
-        }
-
-        return $path;
+        return LoginPath::variants((string) ($_SERVER['REQUEST_URI'] ?? ''), $homePath);
     }
 
     public function slug(): string

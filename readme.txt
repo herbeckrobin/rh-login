@@ -4,7 +4,7 @@ Tags: login, security, brute force, lockout, limit login attempts
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.1
-Stable tag: 0.3.3
+Stable tag: 0.3.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -19,6 +19,12 @@ It can also hide the login URL behind a secret path (wp-login.php is then redire
 Part of the rh-blueprint collection. Settings live under RH Blueprint > Login.
 
 == Changelog ==
+
+= 0.3.4 =
+* Security: the hidden login could be bypassed with other spellings of wp-login.php (//wp-login.php, /%77p-login.php, /./wp-login.php and more). Whether wp-login.php runs is now decided by the executed script, not by the URL. Path comparisons are case-insensitive, URL-decoded and slash-normalized.
+* Security: /login.php and other core aliases no longer redirect to the secret path. Guests sent to the login by core scripts (Customizer, wp-signup.php) land on the home page instead.
+* Security: only the exact action=postpass passes wp-login.php. POSTPASS or postpass with key/checkemail showed the login form.
+* Security: the attempt limit now also counts and blocks REST requests with application passwords, which bypassed it completely.
 
 = 0.3.3 =
 * Update checks: use a GitHub token from RH_GITHUB_TOKEN (environment variable or wp-config constant) when one is set, which lifts the API limit from 60 to 5,000 requests per hour. Without a token nothing changes.

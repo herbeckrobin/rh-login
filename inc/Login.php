@@ -17,6 +17,12 @@ use WP_User;
  */
 final class Login
 {
+    /**
+     * Ein Request zählt höchstens einmal. Bei XML-RPC mit Anwendungspasswort feuern
+     * sonst wp_login_failed und application_password_failed_authentication beide.
+     */
+    private bool $counted = false;
+
     public function boot(): void
     {
         // Anwendungspasswörter abschalten ist eine eigene Härtung, unabhängig vom Limit.
@@ -32,6 +38,12 @@ final class Login
         add_filter('authenticate', [$this, 'genericError'], 40, 1);
         add_filter('shake_error_codes', [$this, 'shakeCodes']);
         add_action('wp_login_failed', [$this, 'recordFailure']);
+
+        // REST mit Anwendungspasswort (Basic Auth) läuft NICHT über wp_authenticate:
+        // weder der authenticate-Filter noch wp_login_failed feuern. Ohne diese zwei
+        // Hooks wird dort weder gezählt noch gesperrt.
+        add_action('application_password_failed_authentication', [$this, 'recordFailure']);
+        add_filter('application_password_is_api_request', [$this, 'blockApiWhenLocked'], 99);
         add_action('wp_login', [$this, 'clearOnSuccess'], 10, 2);
     }
 
@@ -103,8 +115,26 @@ final class Login
         return $codes;
     }
 
+    /**
+     * Gesperrte IP: Anwendungspasswörter gar nicht erst prüfen. Der Request läuft
+     * dann als Gast weiter und bekommt auf geschützten Routen 401.
+     */
+    public function blockApiWhenLocked(bool $isApiRequest): bool
+    {
+        if ($isApiRequest && $this->attempts() >= $this->maxAttempts()) {
+            return false;
+        }
+
+        return $isApiRequest;
+    }
+
     public function recordFailure(): void
     {
+        if ($this->counted) {
+            return;
+        }
+        $this->counted = true;
+
         $current = (int) get_transient($this->key());
         set_transient($this->key(), $current + 1, $this->lockoutMinutes() * MINUTE_IN_SECONDS);
     }
