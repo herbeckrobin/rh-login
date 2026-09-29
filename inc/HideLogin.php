@@ -56,7 +56,7 @@ final class HideLogin
 
         add_filter('site_url', [$this, 'filterUrl'], 10, 1);
         add_filter('network_site_url', [$this, 'filterUrl'], 10, 1);
-        add_filter('wp_redirect', [$this, 'filterUrl'], 10, 1);
+        add_filter('wp_redirect', [$this, 'filterRedirect'], 10, 1);
 
         // Core leitet /login, /login.php, /admin und /dashboard selbst weiter, /login.php
         // direkt auf wp_login_url() und damit auf den geheimen Pfad. So hat ein Scanner
@@ -66,6 +66,11 @@ final class HideLogin
         // Leitet irgendein Core-Skript einen Gast zum Login (auth_redirect im Customizer,
         // wp-signup.php), den Pfad nicht verraten.
         add_filter('wp_redirect', [$this, 'guardRedirect'], 9, 1);
+
+        // redirect_canonical baut Login-Ziele selbst aus der angefragten URL:
+        // /wp-register.php -> wp_registration_url(), /index.php/wp-login.php -> /wp-login.php
+        // (Apache mit PATH_INFO). Canonical soll einen Gast nie zum Login leiten.
+        add_filter('redirect_canonical', [$this, 'guardCanonical'], 99, 1);
 
         // /wp-admin für Gäste verstecken: auf die Startseite, NICHT zum Login leiten.
         // Sonst würde der geheime Login-Pfad im Redirect (Location) geleakt und über
@@ -91,6 +96,15 @@ final class HideLogin
             return;
         }
 
+        // Core schreibt jeden Pfad auf .*wp-register.php zu index.php?register=true um,
+        // redirect_canonical leitet das dann ohne Filter auf wp_registration_url()
+        // weiter, also auf den geheimen Pfad. Das gibt es auf Apache, nginx liefert 404.
+        foreach ($variants as $variant) {
+            if (basename($variant) === 'wp-register.php') {
+                $this->notFound();
+            }
+        }
+
         /** @var string[] $aliases */
         $aliases = array_map('strtolower', (array) apply_filters('rh-login/blocked_aliases', self::KNOWN_ALIASES));
         $hit = array_values(array_intersect($variants, $aliases));
@@ -104,6 +118,11 @@ final class HideLogin
             return;
         }
 
+        $this->notFound();
+    }
+
+    private function notFound(): never
+    {
         status_header(404);
         nocache_headers();
         wp_die(esc_html__('Nicht gefunden.', 'rh-login'), '', ['response' => 404]);
@@ -155,6 +174,42 @@ final class HideLogin
         $targets = LoginPath::variants($path, $homePath);
 
         return in_array('wp-login.php', $targets, true) || in_array($this->slug(), $targets, true);
+    }
+
+    /**
+     * @param string|false $url
+     * @return string|false
+     */
+    public function guardCanonical($url)
+    {
+        if (! is_string($url) || $url === '' || is_user_logged_in()) {
+            return $url;
+        }
+
+        return $this->pointsToLogin($url) ? false : $url;
+    }
+
+    /**
+     * Weiterleitungen auf ein rohes wp-login.php nur umschreiben, wenn der Request
+     * selbst der Login ist oder jemand eingeloggt ist.
+     *
+     * Wer bewusst zum Login leitet, nimmt wp_login_url(). Das ist über site_url
+     * schon auf den geheimen Pfad umgeschrieben und kommt hier gar nicht an. Ein
+     * rohes wp-login.php im Ziel baut dagegen WordPress selbst aus der angefragten
+     * URL, etwa redirect_canonical aus /index.php/wp-login.php (Apache mit
+     * PATH_INFO). Das umzuschreiben hat am 29.09.2026 auf kraus-hampp.de den Pfad
+     * verraten. Bleibt das Ziel wp-login.php, landet der Gast dort auf der Startseite.
+     */
+    public function filterRedirect(string $location): string
+    {
+        if (strpos($location, 'wp-login.php') === false) {
+            return $location;
+        }
+        if (! is_user_logged_in() && ! $this->isLoginScript() && ! in_array($this->slug(), $this->currentRelPaths(), true)) {
+            return $location;
+        }
+
+        return $this->filterUrl($location);
     }
 
     private function intercept(): void

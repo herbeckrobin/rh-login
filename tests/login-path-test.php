@@ -74,6 +74,19 @@ pathCheck('/login.php', hits('/login.php', 'login.php'), true);
 pathCheck('/LOGIN/', hits('/LOGIN/', 'login'), true);
 pathCheck('/%6Cogin', hits('/%6Cogin', 'login'), true);
 
+echo "\nPATH_INFO über index.php (redirect_canonical)\n";
+// Der Pfad ist nicht wp-login.php, das Skript ist index.php. Abgefangen wird das über
+// redirect_canonical und den Redirect-Filter, nicht über den Pfadvergleich.
+pathCheck('/index.php/wp-login.php ist nicht wp-login.php', hits('/index.php/wp-login.php', 'wp-login.php'), false);
+pathCheck('/index.php//wp-login.php normalisiert', LoginPath::variants('/index.php//wp-login.php'), ['index.php/wp-login.php']);
+foreach (['/wp-register.php', '/foo/wp-register.php', '/WP-REGISTER.PHP', '/index.php/wp-register.php', '/wp-%72egister.php'] as $uri) {
+    $hit = false;
+    foreach (LoginPath::variants($uri) as $variant) {
+        $hit = $hit || basename($variant) === 'wp-register.php';
+    }
+    pathCheck($uri . ' endet auf wp-register.php', $hit, true);
+}
+
 echo "\npostpass\n";
 pathCheck('postpass exakt', LoginPath::isPostpass(['action' => 'postpass'], []), true);
 pathCheck('POSTPASS', LoginPath::isPostpass(['action' => 'POSTPASS'], []), false);

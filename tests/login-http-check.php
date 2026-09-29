@@ -139,7 +139,8 @@ expect('Anmelden über den geheimen Pfad', (bool) preg_match('/set-cookie:\s*wor
 $r = request('GET', '/' . $slug . '?action=lostpassword');
 expect('Passwort vergessen über den geheimen Pfad', str_contains($r['body'], 'id="lostpasswordform"'), $r['status'] . '');
 $r = request('GET', '/%2F' . $slug);
-expect('Kodierter geheimer Pfad lädt ebenfalls', $r['status'] === 200 && str_contains($r['body'], 'id="loginform"'), describe($r));
+// nginx lädt den Login, Apache weist %2F im Pfad standardmäßig mit 404 ab. Beides ok.
+expect('Kodierter geheimer Pfad: Login oder 404', ($r['status'] === 200 && str_contains($r['body'], 'id="loginform"')) || $r['status'] === 404, describe($r));
 
 // 2) Kein anderer Weg darf das Formular zeigen oder den Pfad verraten.
 echo "\nVerstecken\n";
@@ -157,6 +158,15 @@ $hidden = [
     '/wp-admin', '/wp-admin/', '/wp-admin/index.php', '/wp-admin/profile.php', '/wp-admin/customize.php',
     '/wp-admin/options.php', '//wp-admin/', '/WP-ADMIN/',
     '/wp-signup.php', '/wp-activate.php', '/wp-register.php',
+    // PATH_INFO über index.php: redirect_canonical streicht /index.php/ und leitet
+    // auf das rohe Ziel weiter. Auf Apache aktiv, nginx liefert hier 404.
+    '/index.php/wp-login.php', '/index.php//wp-login.php', '/index.php/%77p-login.php',
+    '/index.php/WP-LOGIN.PHP', '/index.php/wp-login.php?action=lostpassword',
+    '/index.php/wp-login.php?action=register', '/index.php/wp-login.php/x',
+    '/index.php/wp-admin/', '/index.php/wp-admin/profile.php', '/index.php/wp-admin/customize.php',
+    '/index.php/login.php', '/index.php/login', '/index.php/wp-signup.php',
+    '/foo/wp-register.php', '/WP-REGISTER.PHP', '/index.php/wp-register.php',
+    '/?pagename=wp-login.php', '/?pagename=wp-login', '/index.php?pagename=wp-login.php',
 ];
 foreach ($hidden as $path) {
     $r = request('GET', $path);
@@ -173,6 +183,11 @@ foreach (['/wp-login.php?action=postpass&key=x&login=admin', '/wp-login.php?acti
     $r = request('GET', $path);
     expect('GET ' . $path, ! str_contains($r['body'], 'id="loginform"') && ! str_contains($r['body'], 'resetpassform') && ! leaks($r), describe($r));
 }
+
+// Ein Frontend-Plugin (Mitgliederbereich), das Gäste bewusst per wp_login_url()
+// zum Login schickt, muss weiter auf den geheimen Pfad kommen.
+$r = request('GET', '/', ['headers' => ['X-RH-Test-Member: 1']]);
+expect('Frontend-Plugin leitet per wp_login_url() auf den Pfad', $r['status'] === 302 && stripos($r['location'], '/' . $slug) !== false, describe($r));
 
 // admin-ajax und admin-post bleiben für Gäste erreichbar, ohne den Pfad zu verraten.
 foreach (['/wp-admin/admin-ajax.php', '/wp-admin/admin-post.php'] as $path) {

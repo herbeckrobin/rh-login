@@ -5,7 +5,7 @@
  * Plugin URI:        https://github.com/herbeckrobin/rh-login
  * Update URI:        https://github.com/herbeckrobin/rh-login
  * Description:       Login-Schutz: Versuch-Limit mit IP-Sperre und optionales Verstecken der Login-URL. Teil der rh-blueprint Kollektion.
- * Version:           0.3.4
+ * Version:           0.3.5
  * Requires at least: 6.5
  * Requires PHP:      8.1
  * Author:            Robin Herbeck
@@ -21,7 +21,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('RHLOGIN_VERSION', '0.3.4');
+define('RHLOGIN_VERSION', '0.3.5');
 define('RHLOGIN_PLUGIN_FILE', __FILE__);
 define('RHLOGIN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 

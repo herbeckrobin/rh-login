@@ -4,7 +4,7 @@ Tags: login, security, brute force, lockout, limit login attempts
 Requires at least: 6.5
 Tested up to: 7.0
 Requires PHP: 8.1
-Stable tag: 0.3.4
+Stable tag: 0.3.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -19,6 +19,10 @@ It can also hide the login URL behind a secret path (wp-login.php is then redire
 Part of the rh-blueprint collection. Settings live under RH Blueprint > Login.
 
 == Changelog ==
+
+= 0.3.5 =
+* Security: on Apache with PATH_INFO, /index.php/wp-login.php and /wp-register.php revealed the hidden login path through WordPress' canonical redirect. Canonical redirects never send guests to the login anymore, raw wp-login.php redirects are only rewritten for logged-in users or on the login itself, and paths ending in wp-register.php return 404.
+* Deliberate login redirects via wp_login_url() (for example from a members area plugin) keep working.
 
 = 0.3.4 =
 * Security: the hidden login could be bypassed with other spellings of wp-login.php (//wp-login.php, /%77p-login.php, /./wp-login.php and more). Whether wp-login.php runs is now decided by the executed script, not by the URL. Path comparisons are case-insensitive, URL-decoded and slash-normalized.
